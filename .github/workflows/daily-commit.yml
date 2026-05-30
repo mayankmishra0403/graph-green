@@ -1,0 +1,71 @@
+name: Daily Contribution Commit
+
+# Grant write access so the workflow can commit and push README.md changes.
+permissions:
+  contents: write
+
+on:
+  # Run every day at 9:00 PM IST (15:30 UTC).
+  schedule:
+    - cron: "30 15 * * *"
+  # Allow manual execution from the Actions tab.
+  workflow_dispatch:
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Check out repository contents so we can modify and commit files.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Configure git author information for automated commits.
+      - name: Configure git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # Update the README timestamp block, creating README.md if missing.
+      - name: Update README timestamp
+        shell: bash
+        run: |
+          timestamp="$(TZ='Asia/Kolkata' date '+%Y-%m-%d %H:%M:%S %Z')"
+          start_marker="<!-- TIMESTAMP_START -->"
+          end_marker="<!-- TIMESTAMP_END -->"
+
+          if [ ! -f README.md ]; then
+            {
+              echo "# graph-green"
+              echo
+              echo "${start_marker}"
+              echo "Last updated: ${timestamp}"
+              echo "${end_marker}"
+            } > README.md
+          elif grep -q "${start_marker}" README.md && grep -q "${end_marker}" README.md; then
+            awk -v start="${start_marker}" -v end="${end_marker}" -v ts="${timestamp}" '
+              $0 == start { print; print "Last updated: " ts; in_block=1; next }
+              $0 == end { in_block=0; print; next }
+              !in_block { print }
+            ' README.md > README.tmp && mv README.tmp README.md
+          else
+            {
+              echo
+              echo "${start_marker}"
+              echo "Last updated: ${timestamp}"
+              echo "${end_marker}"
+            } >> README.md
+          fi
+
+      # Commit and push only if the README content actually changed.
+      - name: Commit and push changes
+        shell: bash
+        run: |
+          git add README.md
+          if git diff --cached --quiet; then
+            echo "No changes detected. Skipping commit."
+            exit 0
+          fi
+
+          git commit -m "chore: update README timestamp"
+          git push
